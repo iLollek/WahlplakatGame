@@ -1,0 +1,1 @@
+C:/Users/kwialre/AppData/Local/Programs/Python/Python311/python.exe c:/Users/kwialre/Desktop/Python-Development/WahlplakatGame/src/Server/main.py
