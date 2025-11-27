@@ -41,6 +41,7 @@ def import_wahlsprueche_from_json(json_filepath: str, use_postgres: bool = False
                 partei = parts[0] if len(parts) > 0 else None
                 wahl = parts[1] if len(parts) > 1 else None
                 datum_str = parts[2] if len(parts) > 2 else None
+                quelle = parts[3] if len(parts) > 3 else None
                 
                 # Convert date string to date object
                 datum = None
@@ -57,7 +58,7 @@ def import_wahlsprueche_from_json(json_filepath: str, use_postgres: bool = False
                     partei=partei,
                     wahl=wahl,
                     datum=datum,
-                    quelle=None  # No source information in JSON
+                    quelle=quelle  # No source information in JSON
                 )
                 
                 if success:
@@ -86,11 +87,11 @@ def import_wahlsprueche_from_json(json_filepath: str, use_postgres: bool = False
 
 if __name__ == "__main__":
     # Example usage
-    json_file = r"C:\Users\loris\Desktop\Coding\WahlplakatGame\Docs\wahlsprüche.json"  # Change this to your JSON file path
+    json_file = r"C:\Users\kwialre\Desktop\Python-Development\WahlplakatGame\Docs\wahlsprüche.json"  # Change this to your JSON file path
     
     # Import to SQLite (default)
     print("Importing to SQLite...")
-    import_wahlsprueche_from_json(json_file, use_postgres=True)
+    import_wahlsprueche_from_json(json_file, use_postgres=False)
     
     # Or import to PostgreSQL
     # print("Importing to PostgreSQL...")

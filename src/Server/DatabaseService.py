@@ -1,5 +1,5 @@
 import sillyorm
-from Models import User, Wahlspruch
+from Models import User, Wahlspruch, Room
 from datetime import date, datetime
 
 class DatabaseService:
@@ -29,6 +29,7 @@ class DatabaseService:
         
         registry.register_model(User)
         registry.register_model(Wahlspruch)
+        registry.register_model(Room)
         registry.resolve_tables()
         registry.init_db_tables()
         
@@ -66,6 +67,21 @@ class DatabaseService:
         """
         return env["wahlspruch"].search([])
     
+    @staticmethod
+    def get_alle_parteien(env: sillyorm.Environment) -> list[str]:
+        """
+        Returns a list with all unique Parteien currently in the Database
+        """
+        wahlsprueche = env["wahlspruch"].search([])
+        parteien = set()
+        
+        for wahlspruch in wahlsprueche:
+            if wahlspruch.partei:
+                parteien.add(wahlspruch.partei)
+        
+        return sorted(list(parteien))
+
+
     @staticmethod
     def get_wahlspruch_by_id(env: sillyorm.Environment, wahlspruch_id: int):
         """
@@ -218,3 +234,98 @@ class DatabaseService:
             return True
         except Exception as e:
             raise e
+
+    @staticmethod
+    def create_new_room(env: sillyorm.Environment, room_code: str, created_by_user_id: int) -> bool:
+        """
+        Creates a new Room in the Database. Returns `True` if created, `False` if the room_code already exists.
+        """
+        try:
+            # Check if room with this code already exists
+            existing = env["room"].search([("room_code", "=", room_code)])
+            if existing:
+                return False
+            
+            # Create new Room
+            room_data = {
+                "room_code": room_code,
+                "room_created_by": created_by_user_id,
+                "room_created_at": datetime.now(),
+                "room_closed_at": None
+            }
+            env["room"].create(room_data)
+            return True
+        except Exception as e:
+            raise e
+
+    @staticmethod
+    def get_room_by_code(env: sillyorm.Environment, room_code: str):
+        """
+        Returns a Room by its room_code or empty recordset if not found.
+        """
+        return env["room"].search([("room_code", "=", room_code)])
+
+    @staticmethod
+    def get_room_by_id(env: sillyorm.Environment, room_id: int):
+        """
+        Returns a Room by its ID or empty recordset if not found.
+        """
+        return env["room"].search([("id", "=", room_id)])
+
+    @staticmethod
+    def get_all_open_rooms(env: sillyorm.Environment):
+        """
+        Returns all rooms that are still open (room_closed_at is None).
+        """
+        return env["room"].search([("room_closed_at", "=", None)])
+
+    @staticmethod
+    def close_room(env: sillyorm.Environment, room_id: int) -> bool:
+        """
+        Closes a room by setting room_closed_at timestamp. Returns True if successful, False if room not found.
+        """
+        try:
+            room = env["room"].search([("id", "=", room_id)])
+            if not room:
+                return False
+            
+            room.write({"room_closed_at": datetime.now()})
+            return True
+        except Exception as e:
+            raise e
+
+    @staticmethod
+    def get_rooms_created_by_user(env: sillyorm.Environment, user_id: int):
+        """
+        Returns all rooms created by a specific user.
+        """
+        return env["room"].search([("room_created_by", "=", user_id)])
+
+    @staticmethod
+    def delete_room(env: sillyorm.Environment, room_id: int) -> bool:
+        """
+        Deletes a Room by ID. Returns True if successful, False if not found.
+        """
+        try:
+            room = env["room"].search([("id", "=", room_id)])
+            if not room:
+                return False
+            
+            room.unlink()
+            return True
+        except Exception as e:
+            raise e
+
+    @staticmethod
+    def count_rooms(env: sillyorm.Environment) -> int:
+        """
+        Returns the total count of rooms in the database.
+        """
+        return env["room"].search_count([])
+
+    @staticmethod
+    def count_open_rooms(env: sillyorm.Environment) -> int:
+        """
+        Returns the count of open rooms (room_closed_at is None).
+        """
+        return env["room"].search_count([("room_closed_at", "=", None)])

@@ -1,1 +1,59 @@
 Docs/connection_string.txt
+# Bytecode-Dateien
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C-Extensions
+*.so
+
+# Distribution / Build
+build/
+dist/
+*.egg-info/
+.eggs/
+*.manifest
+*.spec
+
+# Installer
+*.msi
+*.exe
+
+# Logs
+*.log
+
+# Test-Ausgaben
+.coverage
+.tox/
+.nox/
+.pytest_cache/
+
+# Umgebungen
+.env/
+.venv/
+env/
+venv/
+ENV/
+VENV/
+*.env
+.envrc
+
+# IDEs / Editoren
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Mac/Windows spezifisches
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Migrations (optional, bei Django etc.)
+migrations/
+
+# Pylint/MyPy
+.mypy_cache/
+.pylint.d/
