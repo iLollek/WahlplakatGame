@@ -3,6 +3,7 @@ Docs/connection_string.txt
 __pycache__/
 *.py[cod]
 *$py.class
+$.pyc
 
 # C-Extensions
 *.so
@@ -57,3 +58,7 @@ migrations/
 # Pylint/MyPy
 .mypy_cache/
 .pylint.d/
+*.pyc
+*.pyc
+*.pyc
+src/Server/__pycache__/DatabaseService.cpython-311.pyc
