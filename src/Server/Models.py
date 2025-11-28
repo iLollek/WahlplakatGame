@@ -11,10 +11,9 @@ class User(sillyorm.model.Model):
     password = sillyorm.fields.Text()
 
     last_login_ip = sillyorm.fields.String()
-    session_token = sillyorm.fields.String()
+    last_login_time = sillyorm.fields.Datetime(None)
 
-    rooms = sillyorm.fields.One2many("room", "players")
-    current_room = sillyorm.fields.Integer()
+    session_token = sillyorm.fields.String()
 
     registered_at = sillyorm.fields.Datetime(None)
 
@@ -33,19 +32,5 @@ class Wahlspruch(sillyorm.model.Model):
 
     def __str__(self):
         return f"{self.spruch} ({self.partei})"
-
-class Room(sillyorm.model.Model):
-    """
-    A WahlplakatGame Multiplayer Game Room
-    """
-
-    _name = "room"
-
-    room_code = sillyorm.fields.String(length=4, required=True, unique=True)
-    players = sillyorm.fields.One2many("user", "rooms")
-    
-    room_created_by = sillyorm.fields.Integer(required=True)
-    room_created_at = sillyorm.fields.Datetime(None)
-    room_closed_at = sillyorm.fields.Datetime(None)
 
 

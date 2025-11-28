@@ -41,13 +41,6 @@ class NetworkService:
         """Generate a secure random session token"""
         return secrets.token_urlsafe(32)
     
-    def _generate_room_code(self) -> str:
-        """Generate a unique 4-character room code"""
-        while True:
-            code = secrets.token_hex(2).upper()  # 4 characters
-            if not DatabaseService.get_room_by_code(self.env, code):
-                return code
-    
     def _validate_session(self, token: str) -> Optional[int]:
         """
         Validate a session token and return user_id if valid.
@@ -156,7 +149,8 @@ class NetworkService:
                 "user_id": user.id,
                 "nickname": user.nickname,
                 "points": user.points,
-                "last_login_ip": user.last_login_ip
+                "last_login_ip": user.last_login_ip,
+                "last_login_time": user.last_login_time
             }
             
         except Exception as e:
@@ -261,245 +255,6 @@ class NetworkService:
                 "available": False,
                 "message": f"Fehler beim Prüfen des Nicknames: {str(e)}"
             }
-    
-    # ==================== ROOM MANAGEMENT ====================
-    
-    def create_room(self, token: str) -> Dict:
-        """
-        Erstellt einen neuen Raum und fügt den Benutzer hinzu.
-        
-        Returns:
-            {"success": bool, "message": str, "room_code": str (optional)}
-        """
-        try:
-            user_id = self._validate_session(token)
-            
-            if not user_id:
-                return {
-                    "success": False,
-                    "message": "Ungültige Session. Bitte neu anmelden."
-                }
-            
-            # Generate room code
-            room_code = self._generate_room_code()
-            
-            # Create room in database
-            success = DatabaseService.create_new_room(self.env, room_code, user_id)
-            
-            if not success:
-                return {
-                    "success": False,
-                    "message": "Fehler beim Erstellen des Raums."
-                }
-            
-            # Initialize room player list
-            self.room_players[room_code] = [user_id]
-            
-            # Update user's current room
-            user = DatabaseService.get_user_by_id(self.env, user_id)
-            room = DatabaseService.get_room_by_code(self.env, room_code)
-            if user and room:
-                user[0].write({"current_room": room[0].id})
-            
-            return {
-                "success": True,
-                "message": "Raum erfolgreich erstellt!",
-                "room_code": room_code
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Fehler beim Erstellen des Raums: {str(e)}"
-            }
-    
-    def join_room(self, token: str, room_code: str) -> Dict:
-        """
-        Tritt einem existierenden Raum bei.
-        
-        Returns:
-            {"success": bool, "message": str, "players": list (optional)}
-        """
-        try:
-            user_id = self._validate_session(token)
-            
-            if not user_id:
-                return {
-                    "success": False,
-                    "message": "Ungültige Session. Bitte neu anmelden."
-                }
-            
-            # Check if room exists
-            room = DatabaseService.get_room_by_code(self.env, room_code.upper())
-            
-            if not room:
-                return {
-                    "success": False,
-                    "message": "Raum nicht gefunden."
-                }
-            
-            room = room[0]
-            
-            # Check if room is closed
-            if room.room_closed_at:
-                return {
-                    "success": False,
-                    "message": "Dieser Raum ist bereits geschlossen."
-                }
-            
-            # Initialize room player list if not exists
-            if room_code not in self.room_players:
-                self.room_players[room_code] = []
-            
-            # Check if user is already in room
-            if user_id in self.room_players[room_code]:
-                return {
-                    "success": False,
-                    "message": "Du bist bereits in diesem Raum."
-                }
-            
-            # Add user to room
-            self.room_players[room_code].append(user_id)
-            
-            # Update user's current room
-            user = DatabaseService.get_user_by_id(self.env, user_id)
-            if user:
-                user[0].write({"current_room": room.id})
-            
-            # Get player list
-            players = self._get_room_players_info(room_code)
-            
-            return {
-                "success": True,
-                "message": "Raum erfolgreich beigetreten!",
-                "room_code": room_code.upper(),
-                "players": players
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Fehler beim Beitreten des Raums: {str(e)}"
-            }
-    
-    def leave_room(self, token: str) -> Dict:
-        """
-        Verlässt den aktuellen Raum.
-        
-        Returns:
-            {"success": bool, "message": str}
-        """
-        try:
-            user_id = self._validate_session(token)
-            
-            if not user_id:
-                return {
-                    "success": False,
-                    "message": "Ungültige Session. Bitte neu anmelden."
-                }
-            
-            # Get user's current room
-            user = DatabaseService.get_user_by_id(self.env, user_id)
-            if not user or not user[0].current_room:
-                return {
-                    "success": False,
-                    "message": "Du bist in keinem Raum."
-                }
-            
-            room = DatabaseService.get_room_by_id(self.env, user[0].current_room)
-            if not room:
-                return {
-                    "success": False,
-                    "message": "Raum nicht gefunden."
-                }
-            
-            room_code = room[0].room_code
-            
-            # Remove user from room player list
-            if room_code in self.room_players and user_id in self.room_players[room_code]:
-                self.room_players[room_code].remove(user_id)
-                
-                # Close room if empty
-                if len(self.room_players[room_code]) == 0:
-                    DatabaseService.close_room(self.env, room[0].id)
-                    del self.room_players[room_code]
-            
-            # Clear user's current room
-            user[0].write({"current_room": None})
-            
-            return {
-                "success": True,
-                "message": "Raum erfolgreich verlassen."
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Fehler beim Verlassen des Raums: {str(e)}"
-            }
-    
-    def get_room_players(self, token: str) -> Dict:
-        """
-        Gibt die Liste der Spieler im aktuellen Raum zurück.
-        
-        Returns:
-            {"success": bool, "players": list (optional), "message": str (optional)}
-        """
-        try:
-            user_id = self._validate_session(token)
-            
-            if not user_id:
-                return {
-                    "success": False,
-                    "message": "Ungültige Session. Bitte neu anmelden."
-                }
-            
-            # Get user's current room
-            user = DatabaseService.get_user_by_id(self.env, user_id)
-            if not user or not user[0].current_room:
-                return {
-                    "success": False,
-                    "message": "Du bist in keinem Raum."
-                }
-            
-            room = DatabaseService.get_room_by_id(self.env, user[0].current_room)
-            if not room:
-                return {
-                    "success": False,
-                    "message": "Raum nicht gefunden."
-                }
-            
-            room_code = room[0].room_code
-            players = self._get_room_players_info(room_code)
-            
-            return {
-                "success": True,
-                "room_code": room_code,
-                "players": players
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"Fehler beim Abrufen der Spielerliste: {str(e)}"
-            }
-    
-    def _get_room_players_info(self, room_code: str) -> List[Dict]:
-        """Helper method to get detailed player information for a room"""
-        if room_code not in self.room_players:
-            return []
-        
-        players = []
-        for user_id in self.room_players[room_code]:
-            user = DatabaseService.get_user_by_id(self.env, user_id)
-            if user:
-                players.append({
-                    "user_id": user[0].id,
-                    "nickname": user[0].nickname,
-                    "points": user[0].points
-                })
-        
-        return players
     
     # ==================== MESSAGING ====================
     
@@ -634,6 +389,21 @@ class NetworkService:
                 "message": f"Fehler beim Abrufen der Statistiken: {str(e)}"
             }
     
+    def get_alle_parteien(self, token: str) -> Dict:
+        try:
+            user_id = self._validate_session(token)
+            if user_id == None:
+                return {"success": False, "message": "Nicht angemeldet (Token Invalid)"}
+            
+            parteien = DatabaseService.get_alle_parteien(self.env)
+            return {"success": True, "parteien": parteien}
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Fehler beim Abrufen der Statistiken: {str(e)}"
+            }
+
+
     # ==================== UTILITY ====================
     
     def get_server_info(self) -> Dict:
@@ -645,16 +415,12 @@ class NetworkService:
         """
         try:
             total_users = self.env["user"].search_count([])
-            total_rooms = DatabaseService.count_rooms(self.env)
-            open_rooms = DatabaseService.count_open_rooms(self.env)
             total_wahlsprueche = DatabaseService.count_wahlsprueche(self.env)
             
             return {
                 "success": True,
                 "info": {
                     "total_users": total_users,
-                    "total_rooms": total_rooms,
-                    "open_rooms": open_rooms,
                     "total_wahlsprueche": total_wahlsprueche,
                     "active_sessions": len(self.active_sessions)
                 }

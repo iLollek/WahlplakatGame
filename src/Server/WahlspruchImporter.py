@@ -87,7 +87,7 @@ def import_wahlsprueche_from_json(json_filepath: str, use_postgres: bool = False
 
 if __name__ == "__main__":
     # Example usage
-    json_file = r"C:\Users\kwialre\Desktop\Python-Development\WahlplakatGame\Docs\wahlsprüche.json"  # Change this to your JSON file path
+    json_file = r"C:\Users\loris\Desktop\Coding\WahlplakatGame\Docs\wahlsprüche.json"  # Change this to your JSON file path
     
     # Import to SQLite (default)
     print("Importing to SQLite...")

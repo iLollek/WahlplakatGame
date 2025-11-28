@@ -46,7 +46,7 @@ if __name__ == "__main__":
             show_error_box(f'Kritischer Fehler', f'Es konnte keine Verbindung zum WahlplakatGame-Server hergestellt werden. Das Spiel kann nicht gestartet werden. :(')
             closing_protocol()
     except Exception as e:
-        show_error_box(f'Kritischer Fehler', f'Es konnte keine Verbindung zum WahlplakatGame-Server hergestellt werden. Das Spiel kann nicht gestartet werden. :(')
+        show_error_box(f'Kritischer Fehler', f'Es konnte keine Verbindung zum WahlplakatGame-Server hergestellt werden. Das Spiel kann nicht gestartet werden. {e} :(')
         closing_protocol()
 
     gui = MainGUI()

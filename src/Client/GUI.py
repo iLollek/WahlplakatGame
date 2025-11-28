@@ -1,3 +1,4 @@
+from datetime import datetime
 import customtkinter as ctk
 from tkinter import messagebox
 from NetworkClient import NetworkClient
@@ -271,12 +272,45 @@ class AuthenticationPage(ctk.CTkFrame):
         if not password:
             messagebox.showerror("Fehler", "Bitte geben Sie ein Passwort ein.")
             return
+
+        self.login_button.configure(require_redraw=True, text="Anmeldung läuft...")
+        self.update()
         
         response = self.NetClient.login(username, password)
 
         if response["success"]:
-            show_info_box(f'Anmeldung erfolgreich!', f'Willkommen zurück, {response["nickname"]}! (Punkte: {response["points"]})\n\nDie letzte erfolgreiche Anmeldung stammte von der IP-Addresse {response["last_login_ip"]}')
+            last_login = response["last_login_time"]
+            if last_login != None:
+                last_login_str = last_login.value  # Gibt z.B. "20251128T08:31:52"
+                dt = datetime.strptime(last_login_str, "%Y%m%dT%H:%M:%S")
+                last_login_formatted = dt.strftime('%d.%m.%Y %H:%M:%S')
+            else:
+                last_login_formatted = "(UNBEKANNT!)"
+            show_info_box(
+                f'Anmeldung erfolgreich!', 
+                f'Willkommen zurück, {response["nickname"]}! (Punkte: {response["points"]})\n\n'
+                f'Die letzte erfolgreiche Anmeldung erfolgte am {last_login_formatted} von der IP-Adresse {response["last_login_ip"]}'
+            )
+            self.controller.my_user = response
+            self.controller.show_page("GamePage")
+            # Größe setzen
+            self.controller.geometry("1600x900")
+
+            # Mindestgröße ändern
+            self.controller.minsize(1600, 900)
+
+            # Maximale Größe setzen
+            self.controller.maxsize(1920, 1080)
+
+            # Fenster zentrieren (optional)
+            self.controller.update_idletasks()
+            width = 1600
+            height = 900
+            x = (self.controller.winfo_screenwidth() // 2) - (width // 2)
+            y = (self.controller.winfo_screenheight() // 2) - (height // 2)
+            self.controller.geometry(f'{width}x{height}+{x}+{y}')
         else:
+            self.login_button.configure(require_redraw=True, text="Anmelden")
             show_warning_box(f'Anmeldung fehlgeschlagen!', f'Die Anmeldung am WahlplakatGame-Server ist fehlgeschlagen. Grund: {response["message"]} (Vielleicht hast du dein Passwort falsch eingetippt?)')
     
     def _handle_register(self):
@@ -343,24 +377,61 @@ class AuthenticationPage(ctk.CTkFrame):
             )
 
 
-# -------------------------
-#   ALTERNATIVE SEITEN (aus Original-Code)
-# -------------------------
-class JoinLobbyPage(ctk.CTkFrame):
-    def __init__(self, master, controller):
-        super().__init__(master)
-        self.controller = controller
-        ctk.CTkLabel(self, text="Lobby Page", font=("Arial", 24)).pack(pady=20)
-        ctk.CTkButton(self, text="→ Game", command=lambda: controller.show_page("GamePage")).pack(pady=10)
-        ctk.CTkButton(self, text="← Back", command=lambda: controller.show_page("AuthenticationPage")).pack(pady=10)
-
-
 class GamePage(ctk.CTkFrame):
     def __init__(self, master, controller):
         super().__init__(master)
         self.controller = controller
-        ctk.CTkLabel(self, text="Game Page", font=("Arial", 24)).pack(pady=20)
-        ctk.CTkButton(self, text="← Lobby", command=lambda: controller.show_page("JoinLobbyPage")).pack(pady=10)
+        self.NetClient = NetworkClient.get_instance()
+        self.setup_ui()
+
+    def setup_ui(self):
+        """Erstellt die statische UI-Struktur"""
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(2, weight=1)
+        
+
+
+
+    def insert_into_textbox(self, text: str, color: str = None):
+        self.main_game_box.configure(state="normal")
+        self.main_game_box.see("end")  # Scrollt zum Ende
+        self.main_game_box.configure(state="disabled")
+        
+    
+    def on_show(self):
+        """Wird aufgerufen wenn die Page angezeigt wird"""
+        # Jetzt haben wir die User-Daten
+        if self.controller.my_user:
+            nickname = self.controller.my_user["nickname"]
+            points = self.controller.my_user["points"]
+            self.parteien = self.NetClient.get_alle_parteien(self.controller.my_user["token"])
+            print(self.parteien)
+            print(f"User eingeloggt: {self.controller.my_user}")
+
+        else:
+            print("ne")
+
+        self.main_game_box = ctk.CTkTextbox(
+            self,
+            state="disabled"
+        )
+        self.main_game_box.grid(row=0, column=0, rowspan=1, columnspan=1, sticky="nsew")
+
+        self.my_user_label = ctk.CTkLabel(
+            self,
+            text=f"Name: {self.controller.my_user['nickname']}\nPunkte: {self.controller.my_user['points']}",
+            font=ctk.CTkFont(size=16)
+        )
+        self.my_user_label.grid(row=0, column=2, sticky="new", pady=10, padx=10)
+
+
+
+
 
 
 # -------------------------
@@ -387,9 +458,11 @@ class MainGUI(ctk.CTk):
         
         # dict für Page-Objekte
         self.pages = {}
+
+        self.my_user = None
         
         # Seiten erstellen
-        for PageClass in (AuthenticationPage, JoinLobbyPage, GamePage):
+        for PageClass in (AuthenticationPage, GamePage):
             page_name = PageClass.__name__
             frame = PageClass(self.container, self)
             self.pages[page_name] = frame
@@ -402,6 +475,9 @@ class MainGUI(ctk.CTk):
         """Zeigt die gewünschte Page an"""
         frame = self.pages[page_name]
         frame.tkraise()  # bringt Frame nach vorne
+        # Rufe on_show auf, falls die Methode existiert
+        if hasattr(frame, 'on_show'):
+            frame.on_show()
 
 
 # -------------------------

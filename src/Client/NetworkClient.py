@@ -252,119 +252,6 @@ class NetworkClient:
         response = self.proxy.check_username_available(nickname)
         return response
     
-    # ==================== ROOM MANAGEMENT ====================
-    
-    def create_room(self) -> Dict:
-        """
-        Erstellt einen neuen Raum.
-        
-        Returns:
-            Response dictionary mit success, message, room_code
-        """
-        if not self._ensure_connected() or not self._ensure_authenticated():
-            return {"success": False, "message": "Nicht angemeldet"}
-        
-        try:
-            response = self.proxy.create_room(self.session_token)
-            
-            if response["success"]:
-                room_code = response.get("room_code")
-                print(f"✅ {response['message']}")
-                print(f"🎮 Raum-Code: {room_code}")
-            else:
-                print(f"❌ {response['message']}")
-            
-            return response
-        except Exception as e:
-            error_msg = f"Fehler beim Erstellen des Raums: {e}"
-            print(f"❌ {error_msg}")
-            return {"success": False, "message": error_msg}
-    
-    def join_room(self, room_code: str) -> Dict:
-        """
-        Tritt einem Raum bei.
-        
-        Args:
-            room_code: 4-stelliger Raum-Code
-            
-        Returns:
-            Response dictionary mit success, message, players
-        """
-        if not self._ensure_connected() or not self._ensure_authenticated():
-            return {"success": False, "message": "Nicht angemeldet"}
-        
-        try:
-            response = self.proxy.join_room(self.session_token, room_code)
-            
-            if response["success"]:
-                print(f"✅ {response['message']}")
-                print(f"🎮 Raum-Code: {response.get('room_code')}")
-                players = response.get("players", [])
-                print(f"👥 Spieler im Raum ({len(players)}):")
-                for player in players:
-                    print(f"   - {player['nickname']} (Punkte: {player['points']})")
-            else:
-                print(f"❌ {response['message']}")
-            
-            return response
-        except Exception as e:
-            error_msg = f"Fehler beim Beitreten des Raums: {e}"
-            print(f"❌ {error_msg}")
-            return {"success": False, "message": error_msg}
-    
-    def leave_room(self) -> Dict:
-        """
-        Verlässt den aktuellen Raum.
-        
-        Returns:
-            Response dictionary mit success, message
-        """
-        if not self._ensure_connected() or not self._ensure_authenticated():
-            return {"success": False, "message": "Nicht angemeldet"}
-        
-        try:
-            response = self.proxy.leave_room(self.session_token)
-            
-            if response["success"]:
-                print(f"✅ {response['message']}")
-            else:
-                print(f"❌ {response['message']}")
-            
-            return response
-        except Exception as e:
-            error_msg = f"Fehler beim Verlassen des Raums: {e}"
-            print(f"❌ {error_msg}")
-            return {"success": False, "message": error_msg}
-    
-    def get_room_players(self) -> Dict:
-        """
-        Gibt die Liste der Spieler im aktuellen Raum zurück.
-        
-        Returns:
-            Response dictionary mit success, players, room_code
-        """
-        if not self._ensure_connected() or not self._ensure_authenticated():
-            return {"success": False, "message": "Nicht angemeldet"}
-        
-        try:
-            response = self.proxy.get_room_players(self.session_token)
-            
-            if response["success"]:
-                room_code = response.get("room_code")
-                players = response.get("players", [])
-                print(f"🎮 Raum: {room_code}")
-                print(f"👥 Spieler im Raum ({len(players)}):")
-                for player in players:
-                    print(f"   - {player['nickname']} (Punkte: {player['points']})")
-            else:
-                print(f"❌ {response['message']}")
-            
-            return response
-        except Exception as e:
-            error_msg = f"Fehler beim Abrufen der Spielerliste: {e}"
-            print(f"❌ {error_msg}")
-            return {"success": False, "message": error_msg}
-    
     # ==================== MESSAGING ====================
     
     def send_message(self, message: str) -> Dict:
@@ -508,6 +395,27 @@ class NetworkClient:
     
     # ==================== STATUS CHECKS ====================
     
+    def get_alle_parteien(self, token: str) -> list[str]:
+        """
+        Holt alle Parteien vom Server die aktuell in der Datenbank gelistet sind
+        """
+        if not self._ensure_connected() or not self._ensure_authenticated():
+            return {"success": False, "message": "Nicht angemeldet"}
+
+        try:
+            response = self.proxy.get_alle_parteien(self.session_token)
+            
+            if response["success"]:
+                return response["parteien"]
+            else:
+                print(f"❌ {response['message']}")
+            
+            return response
+        except Exception as e:
+            error_msg = f"Fehler beim Abrufen der Partien: {e}"
+            print(f"❌ {error_msg}")
+            return {"success": False, "message": error_msg}
+
     def is_connected(self) -> bool:
         """Prüft ob eine Verbindung zum Server besteht"""
         return self.proxy is not None

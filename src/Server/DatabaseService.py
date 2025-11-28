@@ -1,5 +1,5 @@
 import sillyorm
-from Models import User, Wahlspruch, Room
+from Models import User, Wahlspruch
 from datetime import date, datetime
 
 class DatabaseService:
@@ -29,7 +29,6 @@ class DatabaseService:
         
         registry.register_model(User)
         registry.register_model(Wahlspruch)
-        registry.register_model(Room)
         registry.resolve_tables()
         registry.init_db_tables()
         
@@ -192,7 +191,8 @@ class DatabaseService:
             
             user.write({
                 "session_token": session_token,
-                "last_login_ip": ip_address
+                "last_login_ip": ip_address,
+                "last_login_time": datetime.now()
             })
             return True
         except Exception as e:
