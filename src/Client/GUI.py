@@ -10,6 +10,14 @@ from CTkListbox import CTkListbox
 import webbrowser
 from GameClient import GameClient
 import random
+import pygame
+from ResourceFetcher import ResourceFetcher
+
+
+
+RF = ResourceFetcher()
+
+
 
 def closing_protocol():
     """Closes WahlplakatGame and executes some last saving lines of Code."""
@@ -406,6 +414,16 @@ class GamePage(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
         self.grid_columnconfigure(2, weight=0)
+
+        # In der __init__ oder setup_ui von GamePage:
+        pygame.mixer.init()
+
+        # Sounds laden (einmalig, z.B. in on_show):
+        self.sound_correct = pygame.mixer.Sound(RF.get_resource("correct_answer.mp3"))
+        self.sound_incorrect = pygame.mixer.Sound(RF.get_resource("incorrect_answer.mp3"))
+        self.sound_join = pygame.mixer.Sound(RF.get_resource("player_join.mp3"))
+        self.sound_leave = pygame.mixer.Sound(RF.get_resource("player_leave.mp3"))
+        self.sound_lock = pygame.mixer.Sound(RF.get_resource("lock_answer.mp3"))
         
     def setup_game_callbacks(self):
         """Registriert WebSocket Event Callbacks"""
@@ -573,6 +591,20 @@ class GamePage(ctk.CTkFrame):
         self.insert_into_textbox(f"{'='*60}\n\n", "#FF00FF")
         self.insert_into_textbox(f"Richtige Antwort: {correct_partei}\n\n", "#00FF00")
         
+        # Prüfe ob der eigene Spieler richtig oder falsch geantwortet hat
+        my_result = None
+        for result in results:
+            if result['nickname'] == self.controller.my_user['nickname']:
+                my_result = result
+                break
+        
+        # Spiele Sound für eigene Antwort
+        if my_result:
+            if my_result.get('correct') == True:
+                self.sound_correct.play()
+            elif my_result.get('correct') == False:
+                self.sound_incorrect.play()
+        
         # Zeige Ergebnisse
         for result in results:
             nickname = result['nickname']
@@ -606,6 +638,7 @@ class GamePage(ctk.CTkFrame):
         """Neuer Spieler ist beigetreten"""
         nickname = data.get('nickname', 'Jemand')
         self.insert_into_textbox(f"👋 {nickname} ist beigetreten\n", "#FFFF00")
+        self.sound_join.play()
     
     def on_player_left(self, data):
         """Spieler hat verlassen"""
@@ -618,6 +651,8 @@ class GamePage(ctk.CTkFrame):
             self.insert_into_textbox(f"👋 {nickname} hat die Lobby verlassen\n", "#FFA500")
         else:
             self.insert_into_textbox(f"👋 {nickname} hat die Lobby verlassen\n", "#FFA500")
+
+        self.sound_leave.play()
     
     def on_player_list_update(self, data):
         """Spielerliste wurde aktualisiert"""
@@ -649,6 +684,8 @@ class GamePage(ctk.CTkFrame):
         
         partei = data.get('partei', '')
         self.insert_into_textbox(f"✅ Deine Antwort wurde registriert: {partei}\n", "#00FF00")
+
+        self.sound_lock.play()
     
     def on_leaderboard_update(self, data):
         """Leaderboard wurde aktualisiert"""

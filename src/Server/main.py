@@ -20,9 +20,11 @@ os.chdir(program_directory)
 
 if ENV == "PROD":
     DatabaseService.PATH_TO_YOUR_CONNECTION_STRING_FILE = r"connection_string.txt"
-    env = DatabaseService.get_sillyorm_environment(use_postgres=False)
+    env = DatabaseService.get_sillyorm_environment(use_postgres=True)
 else:
     ENV == "DEV"
+    env = DatabaseService.get_sillyorm_environment(use_postgres=False)
+
 
 # Initialisiere GameService
 GameServer.init_game_service(env)
