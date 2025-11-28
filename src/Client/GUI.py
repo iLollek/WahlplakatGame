@@ -283,6 +283,7 @@ class AuthenticationPage(ctk.CTkFrame):
         response = self.NetClient.login(username, password)
 
         if response["success"]:
+            self.login_button.configure(require_redraw=True, text="Anmelden")
             last_login = response["last_login_time"]
             if last_login != None:
                 last_login_str = last_login.value  # Gibt z.B. "20251128T08:31:52"
@@ -496,15 +497,33 @@ class GamePage(ctk.CTkFrame):
         )
         self.antwort_button.grid(row=3, column=1, sticky="ew", pady=10, padx=10)
 
+        # Button Frame für Quellen und Verlassen
+        button_frame = ctk.CTkFrame(self, fg_color="transparent")
+        button_frame.grid(row=3, column=2, sticky="ew", pady=10, padx=10)
+        
+        button_frame.grid_columnconfigure(0, weight=1)
+        button_frame.grid_columnconfigure(1, weight=1)
+        
         # Quellen-Button (initial disabled)
         self.source_button = ctk.CTkButton(
-            self,
+            button_frame,
             text="Quelle anzeigen",
             command=self.show_source,
             font=ctk.CTkFont(size=12),
             state="disabled"
         )
-        self.source_button.grid(row=3, column=2, sticky="ew", pady=10, padx=10)
+        self.source_button.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        
+        # Verlassen-Button
+        self.leave_button = ctk.CTkButton(
+            button_frame,
+            text="Spiel verlassen",
+            command=self.leave_game,
+            font=ctk.CTkFont(size=12),
+            fg_color="#8d1f1f",
+            hover_color="#701616"
+        )
+        self.leave_button.grid(row=0, column=1, sticky="ew", padx=(5, 0))
 
         # Verbinde mit GameService und tritt bei
         self.insert_into_textbox("🔌 Verbinde mit Server...\n")
@@ -591,7 +610,14 @@ class GamePage(ctk.CTkFrame):
     def on_player_left(self, data):
         """Spieler hat verlassen"""
         nickname = data.get('nickname', 'Jemand')
-        self.insert_into_textbox(f"👋 {nickname} hat die Lobby verlassen\n", "#FFA500")
+        reason = data.get('reason', '')
+        
+        if reason == 'disconnect':
+            self.insert_into_textbox(f"👋 {nickname} hat die Lobby verlassen (Verbindung getrennt)\n", "#FFA500")
+        elif reason == 'request':
+            self.insert_into_textbox(f"👋 {nickname} hat die Lobby verlassen\n", "#FFA500")
+        else:
+            self.insert_into_textbox(f"👋 {nickname} hat die Lobby verlassen\n", "#FFA500")
     
     def on_player_list_update(self, data):
         """Spielerliste wurde aktualisiert"""
@@ -683,6 +709,41 @@ class GamePage(ctk.CTkFrame):
                 show_info_box("Quelle", self.current_quelle if self.current_quelle else "Keine Quelle verfügbar")
         else:
             show_warning_box("Quelle", "Keine Quelle verfügbar für diesen Wahlspruch.")
+    
+    def leave_game(self):
+        """Verlässt das Spiel und kehrt zum Login zurück"""
+        result = question_box(
+            "Spiel verlassen",
+            "Möchtest du das Spiel wirklich verlassen?",
+            icon='warning'
+        )
+        
+        if result == 'yes':
+            self.insert_into_textbox("👋 Verlasse Spiel...\n", "#FFA500")
+            
+            # Verlasse GameService
+            self.GameClient.leave_game()
+            
+            # Kurze Verzögerung für sauberes Disconnect
+            self.after(500, self._complete_leave)
+    
+    def _complete_leave(self):
+        """Komplettiert das Verlassen des Spiels"""
+        # Zurück zum Login
+        self.controller.show_page("AuthenticationPage")
+        
+        # Fenster zurücksetzen
+        self.controller.geometry("800x700")
+        self.controller.minsize(600, 500)
+        self.controller.maxsize(1920, 1080)
+        
+        # Zentriere Fenster
+        self.controller.update_idletasks()
+        width = 800
+        height = 700
+        x = (self.controller.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.controller.winfo_screenheight() // 2) - (height // 2)
+        self.controller.geometry(f'{width}x{height}+{x}+{y}')
 
 
 
@@ -721,6 +782,9 @@ class MainGUI(ctk.CTk):
             # Alle Seiten übereinander legen mit sticky für Responsiveness
             frame.grid(row=0, column=0, sticky="nsew")
         
+        # Cleanup beim Schließen
+        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         self.show_page("AuthenticationPage")
     
     def show_page(self, page_name):
@@ -730,6 +794,28 @@ class MainGUI(ctk.CTk):
         # Rufe on_show auf, falls die Methode existiert
         if hasattr(frame, 'on_show'):
             frame.on_show()
+    
+    def on_closing(self):
+        """Wird beim Schließen des Fensters aufgerufen"""
+        logging.info("Fenster wird geschlossen - führe Cleanup durch")
+        
+        # Disconnect GameClient falls verbunden
+        game_client = GameClient.get_instance()
+        if game_client.is_connected():
+            logging.info("Trenne GameClient...")
+            game_client.disconnect()
+        
+        # Logout über NetClient falls angemeldet
+        net_client = NetworkClient.get_instance()
+        if net_client.is_authenticated():
+            logging.info("Melde vom Server ab...")
+            net_client.logout()
+        
+        # Schließe Fenster
+        self.destroy()
+        
+        # Beende Programm sauber
+        closing_protocol()
 
 
 # -------------------------

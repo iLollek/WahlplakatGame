@@ -68,6 +68,7 @@ class GameClient:
         self.sio = socketio.Client(logger=False, engineio_logger=False)
         self.connected = False
         self.session_token: Optional[str] = None
+        self.leave_requested = False  # Flag für bewusstes Verlassen
         
         # Event Callbacks
         self.callbacks: Dict[str, list] = {
@@ -99,8 +100,16 @@ class GameClient:
         
         @self.sio.on('disconnect')
         def on_disconnect():
+            was_connected = self.connected
             self.connected = False
-            print("🔌 WebSocket getrennt")
+            
+            if was_connected:
+                if self.leave_requested:
+                    print("🔌 WebSocket getrennt (auf Anfrage)")
+                else:
+                    print("🔌 WebSocket getrennt (Verbindungsverlust)")
+            
+            self.leave_requested = False
         
         @self.sio.on('connected')
         def on_server_connected(data):
@@ -185,13 +194,32 @@ class GameClient:
             print(f"❌ Verbindung zum GameService fehlgeschlagen: {e}")
             return False
     
-    def disconnect(self):
-        """Trennt die Verbindung zum GameService"""
+    def disconnect(self, by_request: bool = True):
+        """
+        Trennt die Verbindung zum GameService
+        
+        Args:
+            by_request: True wenn bewusst vom User initiiert, False bei Crash/Fehler
+        """
         try:
+            self.leave_requested = by_request
+            
             if self.connected:
                 if self.session_token:
-                    self.leave_game()
+                    # Sende leave_game Event bevor wir disconnecten
+                    try:
+                        self.sio.emit('leave_game', {
+                            'token': self.session_token,
+                            'reason': 'request' if by_request else 'crash'
+                        })
+                        # Kurze Wartezeit damit Event noch gesendet wird
+                        import time
+                        time.sleep(0.1)
+                    except:
+                        pass
+                
                 self.sio.disconnect()
+                self.session_token = None
         except Exception as e:
             print(f"❌ Fehler beim Trennen: {e}")
     
@@ -214,13 +242,8 @@ class GameClient:
             return False
     
     def leave_game(self):
-        """Verlässt das Spiel"""
-        try:
-            if self.session_token:
-                self.sio.emit('leave_game', {'token': self.session_token})
-                self.session_token = None
-        except Exception as e:
-            print(f"❌ Fehler beim Verlassen: {e}")
+        """Verlässt das Spiel (auf Wunsch des Users)"""
+        self.disconnect(by_request=True)
     
     def submit_answer(self, partei: str) -> bool:
         """
@@ -260,7 +283,7 @@ class GameClient:
     def request_leaderboard(self):
         """Fordert das Leaderboard an"""
         try:
-            self.sio.emit('request_leaderboard', {})
+            self.sio.emit('request_leaderboard')
         except Exception as e:
             print(f"❌ Fehler beim Anfordern des Leaderboards: {e}")
     

@@ -18,6 +18,7 @@ class GameLobby:
     def __init__(self, db_env):
         self.db_env = db_env
         self.players: Dict[str, dict] = {}  # session_token -> {user_id, nickname, sid, answered, points}
+        self.sid_to_token: Dict[str, str] = {}  # sid -> session_token für Disconnect-Handling
         self.current_wahlspruch = None
         self.current_quelle = None
         self.current_answers: Dict[str, str] = {}  # session_token -> partei
@@ -37,19 +38,44 @@ class GameLobby:
                 'points': points,
                 'can_answer': True  # Kann diese Runde antworten
             }
+            self.sid_to_token[sid] = session_token
             
             # Wenn Spieler während einer aktiven Runde beitritt, kann er diese Runde nicht antworten
             if self.round_active:
                 self.players[session_token]['can_answer'] = False
         
-    def remove_player(self, session_token: str):
-        """Entfernt einen Spieler aus der Lobby"""
+    def remove_player(self, session_token: str = None, sid: str = None) -> Optional[dict]:
+        """
+        Entfernt einen Spieler aus der Lobby.
+        Kann entweder per session_token oder sid erfolgen.
+        
+        Returns:
+            Dict mit Spieler-Info falls gefunden, sonst None
+        """
         with self.lock:
+            # Finde Token falls nur SID gegeben
+            if sid and not session_token:
+                session_token = self.sid_to_token.get(sid)
+            
+            if not session_token:
+                return None
+            
+            # Entferne Spieler
+            player_info = None
             if session_token in self.players:
+                player_info = self.players[session_token].copy()
                 del self.players[session_token]
+                
+                # Cleanup sid_to_token mapping
+                if player_info['sid'] in self.sid_to_token:
+                    del self.sid_to_token[player_info['sid']]
+                
+                # Cleanup Antworten
                 if session_token in self.current_answers:
                     del self.current_answers[session_token]
             
+            return player_info
+    
     def get_player_list(self) -> List[dict]:
         """Gibt Liste aller Spieler zurück"""
         with self.lock:
@@ -233,8 +259,29 @@ def handle_connect():
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    """Client trennt Verbindung"""
+    """Client trennt Verbindung - automatische Erkennung"""
     print(f"🔌 Client getrennt: {request.sid}")
+    
+    if not game_service:
+        return
+    
+    # Finde und entferne Spieler anhand der Socket-ID
+    player_info = game_service.lobby.remove_player(sid=request.sid)
+    
+    if player_info:
+        nickname = player_info['nickname']
+        
+        # Benachrichtige andere Spieler über Disconnect
+        emit('player_left', {
+            'nickname': nickname,
+            'reason': 'disconnect'
+        }, broadcast=True)
+        
+        # Update Spielerliste
+        player_list = game_service.lobby.get_player_list()
+        emit('player_list_update', {'players': player_list}, broadcast=True)
+        
+        print(f"👋 {nickname} wurde automatisch aus der Lobby entfernt (Disconnect)")
 
 
 @socketio.on('join_game')
@@ -304,30 +351,36 @@ def handle_join_game(data):
 
 @socketio.on('leave_game')
 def handle_leave_game(data):
-    """Spieler verlässt das Spiel"""
+    """Spieler verlässt das Spiel bewusst"""
     try:
         session_token = data.get('token')
+        reason = data.get('reason', 'request')  # 'request' oder 'crash'
         
         if not game_service:
             return
         
-        if session_token in game_service.lobby.players:
-            player = game_service.lobby.players[session_token]
-            nickname = player['nickname']
+        player_info = game_service.lobby.remove_player(session_token)
+        
+        if player_info:
+            nickname = player_info['nickname']
             
-            # Entferne Spieler
-            game_service.lobby.remove_player(session_token)
             if session_token in game_service.session_to_sid:
                 del game_service.session_to_sid[session_token]
             
             # Benachrichtige andere
-            emit('player_left', {'nickname': nickname}, broadcast=True)
+            emit('player_left', {
+                'nickname': nickname,
+                'reason': reason
+            }, broadcast=True)
             
             # Update Spielerliste
             player_list = game_service.lobby.get_player_list()
             emit('player_list_update', {'players': player_list}, broadcast=True)
             
-            print(f"👋 {nickname} hat die Lobby verlassen")
+            if reason == 'crash':
+                print(f"👋 {nickname} hat die Lobby verlassen (Crash)")
+            else:
+                print(f"👋 {nickname} hat die Lobby verlassen (auf Anfrage)")
         
     except Exception as e:
         print(f"❌ Fehler bei leave_game: {e}")
