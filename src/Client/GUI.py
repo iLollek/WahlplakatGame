@@ -461,11 +461,13 @@ class GamePage(ctk.CTkFrame):
             self
         )
         self.current_lobby_players.grid(row=1, column=2, sticky="nsew", pady=10, padx=10)
+        self.current_lobby_players.insert(0, "Aktuell Verbunden:")
 
         self.leaderboard = CTkListbox(
             self
         )
         self.leaderboard.grid(row=2, column=2, sticky="nsew", pady=10, padx=10)
+        self.leaderboard.insert(0, "Top-Spieler:")
 
         self.partei_auswahl_dropdown = ctk.CTkOptionMenu(
             self
