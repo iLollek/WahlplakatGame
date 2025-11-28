@@ -155,7 +155,8 @@ class NetworkService:
                 "token": token,
                 "user_id": user.id,
                 "nickname": user.nickname,
-                "points": user.points
+                "points": user.points,
+                "last_login_ip": user.last_login_ip
             }
             
         except Exception as e:
@@ -222,6 +223,44 @@ class NetworkService:
             
         except Exception as e:
             return {"valid": False, "error": str(e)}
+    
+    def check_username_available(self, nickname: str) -> Dict:
+        """
+        Prüft ob ein Benutzername verfügbar ist.
+        
+        Args:
+            nickname: Zu prüfender Benutzername
+            
+        Returns:
+            {"available": bool, "message": str}
+        """
+        try:
+            # Validate input length
+            if not nickname or len(nickname) > 18:
+                return {
+                    "available": False,
+                    "message": "Nickname muss zwischen 1 und 18 Zeichen lang sein."
+                }
+            
+            # Check if user already exists
+            existing = DatabaseService.get_user_by_nickname(self.env, nickname)
+            
+            if existing:
+                return {
+                    "available": False,
+                    "message": "Nickname bereits vergeben."
+                }
+            else:
+                return {
+                    "available": True,
+                    "message": "Nickname verfügbar!"
+                }
+                
+        except Exception as e:
+            return {
+                "available": False,
+                "message": f"Fehler beim Prüfen des Nicknames: {str(e)}"
+            }
     
     # ==================== ROOM MANAGEMENT ====================
     

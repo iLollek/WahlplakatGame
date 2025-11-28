@@ -1,1 +1,1 @@
-C:/Users/kwialre/AppData/Local/Programs/Python/Python311/python.exe c:/Users/kwialre/Desktop/Python-Development/WahlplakatGame/src/Server/main.py
+C:/Users/loris/AppData/Local/Microsoft/WindowsApps/python3.11.exe c:/Users/loris/Desktop/Coding/WahlplakatGame/src/Server/main.py

@@ -1,22 +1,80 @@
 import xmlrpc.client
 from typing import Dict, List, Optional
 import socket
+import threading
 
 
 class NetworkClient:
     """
-    RPC Client für das WahlplakatGame.
+    Singleton RPC Client für das WahlplakatGame.
     Kommuniziert mit dem NetworkService Server.
+    
+    Verwendung:
+        # Einmalig verbinden (z.B. in main.py)
+        client = NetworkClient.get_instance()
+        client.connect()
+        
+        # Überall im Code verwenden
+        client = NetworkClient.get_instance()
+        if client.is_connected():
+            client.login(...)
     """
     
-    def __init__(self, host: str = "localhost", port: int = 8000):
+    _instance = None
+    _lock = threading.Lock()  # Für Thread-Sicherheit
+    _initialized = False
+    
+    def __new__(cls):
+        """Verhindert direkte Instanziierung"""
+        if cls._instance is None:
+            cls._instance = super(NetworkClient, cls).__new__(cls)
+        return cls._instance
+    
+    @classmethod
+    def get_instance(cls, host: str = "localhost", port: int = 8000) -> 'NetworkClient':
         """
-        Initialisiert den NetworkClient.
+        Gibt die Singleton-Instanz zurück.
+        
+        Args:
+            host: Server hostname oder IP (nur beim ersten Aufruf relevant)
+            port: Server port (nur beim ersten Aufruf relevant)
+            
+        Returns:
+            Die NetworkClient Singleton-Instanz
+        """
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = cls.__new__(cls)
+                    cls._instance._initialize(host, port)
+        return cls._instance
+    
+    @classmethod
+    def reset_instance(cls):
+        """
+        Setzt die Singleton-Instanz zurück.
+        Nützlich für Tests oder wenn eine neue Verbindung aufgebaut werden soll.
+        """
+        with cls._lock:
+            if cls._instance:
+                try:
+                    cls._instance.disconnect()
+                except:
+                    pass
+            cls._instance = None
+            cls._initialized = False
+    
+    def _initialize(self, host: str = "localhost", port: int = 8000):
+        """
+        Initialisiert den NetworkClient (nur beim ersten Mal).
         
         Args:
             host: Server hostname oder IP
             port: Server port
         """
+        if NetworkClient._initialized:
+            return
+            
         self.host = host
         self.port = port
         self.server_url = f"http://{host}:{port}"
@@ -24,7 +82,9 @@ class NetworkClient:
         self.session_token: Optional[str] = None
         self.user_id: Optional[int] = None
         self.nickname: Optional[str] = None
-        
+        self.points: int = 0
+        NetworkClient._initialized = True
+    
     def connect(self) -> bool:
         """
         Verbindet mit dem Server.
@@ -35,8 +95,11 @@ class NetworkClient:
         try:
             self.proxy = xmlrpc.client.ServerProxy(self.server_url, allow_none=True)
             # Test connection
-            self.proxy.get_server_info()
-            return True
+            response = self.proxy.get_server_info()
+            if response.get("success"):
+                print(f"✅ Verbunden mit Server {self.host}:{self.port}")
+                return True
+            return False
         except Exception as e:
             print(f"❌ Verbindung zum Server fehlgeschlagen: {e}")
             return False
@@ -117,8 +180,9 @@ class NetworkClient:
                 self.session_token = response.get("token")
                 self.user_id = response.get("user_id")
                 self.nickname = response.get("nickname")
+                self.points = response.get("points", 0)
                 print(f"✅ {response['message']}")
-                print(f"👤 Angemeldet als: {self.nickname} (Punkte: {response.get('points', 0)})")
+                print(f"👤 Angemeldet als: {self.nickname} (Punkte: {self.points})")
             else:
                 print(f"❌ {response['message']}")
             
@@ -146,6 +210,7 @@ class NetworkClient:
                 self.session_token = None
                 self.user_id = None
                 self.nickname = None
+                self.points = 0
             else:
                 print(f"❌ {response['message']}")
             
@@ -175,11 +240,17 @@ class NetworkClient:
                 self.session_token = None
                 self.user_id = None
                 self.nickname = None
+                self.points = 0
             
             return response
         except Exception as e:
             print(f"❌ Fehler bei Token-Validierung: {e}")
             return {"valid": False, "error": str(e)}
+    
+    def check_username_available(self, nickname: str) -> Dict:
+        """Prüft ob ein Benutzername verfügbar ist."""
+        response = self.proxy.check_username_available(nickname)
+        return response
     
     # ==================== ROOM MANAGEMENT ====================
     
@@ -435,40 +506,7 @@ class NetworkClient:
             print(f"❌ {error_msg}")
             return {"success": False, "message": error_msg}
     
-    # ==================== CONVENIENCE METHODS ====================
-    
-    def quick_start(self, nickname: str, password: str, create_new_room: bool = False, 
-                   room_code: Optional[str] = None) -> bool:
-        """
-        Schnellstart: Verbindet, meldet an und tritt optional einem Raum bei.
-        
-        Args:
-            nickname: Benutzername
-            password: Passwort
-            create_new_room: Erstellt einen neuen Raum wenn True
-            room_code: Raum-Code zum Beitreten (ignoriert wenn create_new_room=True)
-            
-        Returns:
-            True wenn erfolgreich, False sonst
-        """
-        # Connect
-        if not self.connect():
-            return False
-        
-        # Login
-        login_response = self.login(nickname, password)
-        if not login_response.get("success"):
-            return False
-        
-        # Room handling
-        if create_new_room:
-            create_response = self.create_room()
-            return create_response.get("success", False)
-        elif room_code:
-            join_response = self.join_room(room_code)
-            return join_response.get("success", False)
-        
-        return True
+    # ==================== STATUS CHECKS ====================
     
     def is_connected(self) -> bool:
         """Prüft ob eine Verbindung zum Server besteht"""
@@ -477,64 +515,100 @@ class NetworkClient:
     def is_authenticated(self) -> bool:
         """Prüft ob der Benutzer authentifiziert ist"""
         return self.session_token is not None
+    
+    def get_current_user(self) -> Optional[Dict]:
+        """
+        Gibt Informationen über den aktuell angemeldeten Benutzer zurück.
+        
+        Returns:
+            Dictionary mit user_id, nickname, points oder None
+        """
+        if not self.is_authenticated():
+            return None
+        
+        return {
+            "user_id": self.user_id,
+            "nickname": self.nickname,
+            "points": self.points
+        }
+
+
+# ==================== CONVENIENCE FUNCTIONS ====================
+
+def get_client() -> NetworkClient:
+    """
+    Convenience-Funktion für schnellen Zugriff auf den Client.
+    
+    Returns:
+        Die NetworkClient Singleton-Instanz
+    """
+    return NetworkClient.get_instance()
 
 
 # ==================== EXAMPLE USAGE ====================
 
 def example_usage():
-    """Beispiel für die Verwendung des NetworkClient"""
+    """Beispiel für die Verwendung des Singleton NetworkClient"""
     
-    # Create client
-    client = NetworkClient(host="localhost", port=8000)
+    print("=== BEISPIEL: Singleton NetworkClient ===\n")
     
-    # Connect to server
-    print("Verbinde mit Server...")
+    # 1. Erste Instanz erstellen und verbinden
+    print("1. Client-Instanz holen und verbinden...")
+    client = NetworkClient.get_instance(host="localhost", port=8000)
+    
     if not client.connect():
+        print("Verbindung fehlgeschlagen!")
         return
     
-    # Get server info
+    # 2. Server-Info abrufen
+    print("\n2. Server-Informationen abrufen...")
     client.get_server_info()
     
-    # Register new account
-    print("\n--- Registrierung ---")
-    client.register_account("TestSpieler", "password123")
+    # 3. Registrierung
+    print("\n3. Neuen Account registrieren...")
+    client.register_account("TestUser123", "password123")
     
-    # Login
-    print("\n--- Login ---")
-    client.login("TestSpieler", "password123")
+    # 4. Login
+    print("\n4. Login...")
+    client.login("TestUser123", "password123")
     
-    # Get user stats
-    print("\n--- Benutzerstatistiken ---")
-    client.get_user_stats()
+    # 5. Zeige, dass die Instanz überall verfügbar ist
+    print("\n5. Demonstriere Singleton-Verhalten...")
     
-    # Get leaderboard
-    print("\n--- Bestenliste ---")
-    client.get_leaderboard(limit=5)
+    # Hole Instanz "erneut" (ist die gleiche)
+    client2 = NetworkClient.get_instance()
     
-    # Create room
-    print("\n--- Raum erstellen ---")
-    room_response = client.create_room()
+    print(f"client == client2: {client is client2}")  # True
+    print(f"Angemeldet als: {client2.nickname}")
+    print(f"User ID: {client2.user_id}")
     
-    # Get room players
-    if room_response.get("success"):
-        print("\n--- Spielerliste ---")
-        client.get_room_players()
+    # 6. Verwende die Instanz in einer "anderen Funktion"
+    print("\n6. Verwende Client in einer anderen Funktion...")
+    other_function_example()
     
-    # Send message
-    print("\n--- Nachricht senden ---")
-    client.send_message("Hallo zusammen!")
-    
-    # Leave room
-    print("\n--- Raum verlassen ---")
-    client.leave_room()
-    
-    # Logout
-    print("\n--- Logout ---")
+    # 7. Logout
+    print("\n7. Logout...")
     client.logout()
     
-    # Disconnect
-    client.disconnect()
     print("\n✅ Beispiel abgeschlossen!")
+
+
+def other_function_example():
+    """
+    Beispiel-Funktion die zeigt, dass der Client überall verfügbar ist.
+    Simuliert z.B. eine GUI-Klasse die den Client verwendet.
+    """
+    # Kein Import nötig, Client ist bereits initialisiert
+    client = NetworkClient.get_instance()
+    
+    if client.is_authenticated():
+        print(f"   ✓ In other_function_example(): User '{client.nickname}' ist angemeldet")
+        print(f"   ✓ Kann direkt Funktionen aufrufen!")
+        
+        # Beispiel: Leaderboard abrufen
+        client.get_leaderboard(limit=3)
+    else:
+        print("   ✗ Nicht angemeldet")
 
 
 if __name__ == "__main__":
