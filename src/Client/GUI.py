@@ -7,6 +7,9 @@ import logging
 import os
 import signal
 from CTkListbox import CTkListbox
+import webbrowser
+from GameClient import GameClient
+import random
 
 def closing_protocol():
     """Closes WahlplakatGame and executes some last saving lines of Code."""
@@ -383,121 +386,303 @@ class GamePage(ctk.CTkFrame):
         super().__init__(master)
         self.controller = controller
         self.NetClient = NetworkClient.get_instance()
+        self.GameClient = GameClient.get_instance()
+        
+        self.current_quelle = None
+        self.has_answered = False
+        self.available_parteien = []
+        
         self.setup_ui()
+        self.setup_game_callbacks()
 
     def setup_ui(self):
         """Erstellt die statische UI-Struktur"""
         self.grid_rowconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
         self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(3, weight=0)
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
         self.grid_columnconfigure(2, weight=0)
         
+    def setup_game_callbacks(self):
+        """Registriert WebSocket Event Callbacks"""
+        self.GameClient.on('new_round', self.on_new_round)
+        self.GameClient.on('player_answered', self.on_player_answered)
+        self.GameClient.on('round_end', self.on_round_end)
+        self.GameClient.on('player_joined', self.on_player_joined)
+        self.GameClient.on('player_left', self.on_player_left)
+        self.GameClient.on('player_list_update', self.on_player_list_update)
+        self.GameClient.on('answer_accepted', self.on_answer_accepted)
+        self.GameClient.on('leaderboard_update', self.on_leaderboard_update)
+        self.GameClient.on('error', self.on_error)
+        
     def insert_into_textbox(self, text: str, color: str = None):
         """
         Fügt Text in die Textbox ein und scrollt zum Ende.
-        
-        :param text: Der einzufügende Text
-        :type text: str
-        :param color: Optionale Textfarbe (z.B. 'red', '#FF0000')
-        :type color: str or None
-        :return: None
-        :rtype: None
-        
-        :Example:
-        
-        >>> self.insert_into_textbox("Hallo Welt!")
-        >>> self.insert_into_textbox("Fehler aufgetreten", color="red")
-        >>> self.insert_into_textbox("Erfolg!", color="#00FF00")
         """
-        self.main_game_box.configure(state="normal")
-        
-        if color:
-            # Erstelle einen eindeutigen Tag-Namen für diese Farbe
-            tag_name = f"color_{color.replace('#', '')}"
-            
-            # Konfiguriere den Tag mit der gewünschten Farbe
-            self.main_game_box.tag_configure(tag_name, foreground=color)
-            
-            # Füge den Text mit dem Tag ein
-            self.main_game_box.insert("end", text, tag_name)
+        self.main_game_box.configure(state='normal')
+
+        if color != "default":
+            tag_hash = random.getrandbits(32)
+            self.main_game_box.insert("end", text + "\n", tags=tag_hash)
+            self.main_game_box.tag_config(tag_hash, foreground=color)
         else:
-            # Füge den Text ohne Farbe ein
-            self.main_game_box.insert("end", text)
-        
-        self.main_game_box.see("end")  # Scrollt zum Ende
-        self.main_game_box.configure(state="disabled")
-        
+            self.main_game_box.insert("end", text + "\n")
+
+        self.main_game_box.yview_moveto(1)
+        self.main_game_box.configure(state='disabled')
     
     def on_show(self):
         """Wird aufgerufen wenn die Page angezeigt wird"""
-        # Jetzt haben wir die User-Daten
-        if self.controller.my_user:
-            nickname = self.controller.my_user["nickname"]
-            points = self.controller.my_user["points"]
-            self.parteien = self.NetClient.get_alle_parteien(self.controller.my_user["token"])
-            print(self.parteien)
-            print(f"User eingeloggt: {self.controller.my_user}")
+        if not self.controller.my_user:
+            return
 
-        else:
-            print("ne")
-
+        nickname = self.controller.my_user["nickname"]
+        points = self.controller.my_user["points"]
+        token = self.controller.my_user["token"]
+        
+        # Hole Parteien
+        self.available_parteien = self.NetClient.get_alle_parteien(token)
+        
+        # Erstelle UI Elemente
         self.main_game_box = ctk.CTkTextbox(
             self,
-            state="disabled"
+            state="disabled",
+            wrap="word",
+            font=ctk.CTkFont(size=14)
         )
-        self.main_game_box.grid(row=0, column=0, rowspan=3, columnspan=2, sticky="nsew")
+        self.main_game_box.grid(row=0, column=0, rowspan=3, columnspan=2, sticky="nsew", padx=10, pady=10)
 
         self.my_user_label = ctk.CTkLabel(
             self,
-            text=f"Name: {self.controller.my_user['nickname']}\nPunkte: {self.controller.my_user['points']}",
-            font=ctk.CTkFont(size=16)
+            text=f"Spieler: {nickname}\nPunkte: {points}",
+            font=ctk.CTkFont(size=16, weight="bold")
         )
         self.my_user_label.grid(row=0, column=2, sticky="new", pady=10, padx=10)
 
         self.current_lobby_players = CTkListbox(
-            self
+            self,
+            height=250
         )
         self.current_lobby_players.grid(row=1, column=2, sticky="nsew", pady=10, padx=10)
-        self.current_lobby_players.insert(0, "Aktuell Verbunden:")
 
         self.leaderboard = CTkListbox(
-            self
+            self,
+            height=250
         )
         self.leaderboard.grid(row=2, column=2, sticky="nsew", pady=10, padx=10)
-        self.leaderboard.insert(0, "Top-Spieler:")
+        self.leaderboard.insert(0, "🏆 Top-Spieler")
 
-        self.partei_auswahl_dropdown = ctk.CTkOptionMenu(
-            self
-        )
-        self.partei_auswahl_dropdown.grid(row=3, column=0, sticky="nsew", pady=10, padx=10)
+        # Partei-Auswahl Dropdown
+        if self.available_parteien:
+            self.partei_auswahl_dropdown = ctk.CTkOptionMenu(
+                self,
+                values=self.available_parteien,
+                font=ctk.CTkFont(size=14)
+            )
+            self.partei_auswahl_dropdown.grid(row=3, column=0, sticky="ew", pady=10, padx=10)
+            self.partei_auswahl_dropdown.set(self.available_parteien[0])
 
+        # Antwort-Button
         self.antwort_button = ctk.CTkButton(
             self,
             text="Antwort senden",
-            command=None
+            command=self.send_answer,
+            font=ctk.CTkFont(size=14, weight="bold"),
+            fg_color="#1f8d54",
+            hover_color="#166d41"
         )
-        self.antwort_button.grid(row=3, column=1, sticky="nsew", pady=10, padx=10)
+        self.antwort_button.grid(row=3, column=1, sticky="ew", pady=10, padx=10)
 
+        # Quellen-Button (initial disabled)
         self.source_button = ctk.CTkButton(
             self,
-            text="Quelle vom Wahlspruch öffnen",
-            command=None
+            text="Quelle anzeigen",
+            command=self.show_source,
+            font=ctk.CTkFont(size=12),
+            state="disabled"
         )
-        self.source_button.grid(row=3, column=1, sticky="nsew", pady=10, padx=10)
+        self.source_button.grid(row=3, column=2, sticky="ew", pady=10, padx=10)
 
-        self.leave_button = ctk.CTkButton(
-            self,
-            text="Spiel schließen",
-            command=None,
-            fg_color="red"
-        )
-        self.leave_button.grid(row=3, column=2, sticky="nsew", pady=10, padx=10)
-
-
-
+        # Verbinde mit GameService und tritt bei
+        self.insert_into_textbox("🔌 Verbinde mit Server...\n")
+        
+        if self.GameClient.connect():
+            self.insert_into_textbox("✅ Verbunden! Trete Lobby bei...\n", "#00FF00")
+            self.GameClient.join_game(token)
+        else:
+            self.insert_into_textbox("❌ Verbindung fehlgeschlagen!\n", "#FF0000")
+        
+        # Leaderboard anfordern
+        self.GameClient.request_leaderboard()
+    
+    # ==================== GAME EVENT HANDLERS ====================
+    
+    def on_new_round(self, data):
+        """Neue Runde beginnt"""
+        self.has_answered = False
+        self.current_quelle = None
+        self.source_button.configure(state="disabled")
+        self.antwort_button.configure(state="normal")
+        
+        round_num = data.get('round_number', '?')
+        wahlspruch = data.get('wahlspruch', '')
+        
+        self.insert_into_textbox(f"\n{'='*60}\n", "#FFFF00")
+        self.insert_into_textbox(f"🎮 RUNDE #{round_num}\n", "#FFFF00")
+        self.insert_into_textbox(f"{'='*60}\n\n", "#FFFF00")
+        self.insert_into_textbox(f'"{wahlspruch}"\n\n', "#FFFFFF")
+        self.insert_into_textbox("⏱️ 15 Sekunden Zeit zum Antworten!\n")
+    
+    def on_player_answered(self, data):
+        """Ein Spieler hat geantwortet"""
+        nickname = data.get('nickname', 'Jemand')
+        self.insert_into_textbox(f"✓ {nickname} hat geantwortet\n", "#00FFFF")
+    
+    def on_round_end(self, data):
+        """Runde ist zu Ende"""
+        correct_partei = data.get('correct_partei', '')
+        results = data.get('results', [])
+        quelle = data.get('quelle', None)
+        
+        self.current_quelle = quelle
+        
+        self.insert_into_textbox(f"\n{'='*60}\n", "#FF00FF")
+        self.insert_into_textbox(f"🏁 RUNDENENDE\n", "#FF00FF")
+        self.insert_into_textbox(f"{'='*60}\n\n", "#FF00FF")
+        self.insert_into_textbox(f"Richtige Antwort: {correct_partei}\n\n", "#00FF00")
+        
+        # Zeige Ergebnisse
+        for result in results:
+            nickname = result['nickname']
+            answered = result.get('answered', 'Keine Antwort')
+            correct = result.get('correct')
+            points_earned = result.get('points_earned', 0)
+            total_points = result.get('total_points', 0)
+            could_answer = result.get('could_answer', True)
+            
+            if not could_answer:
+                self.insert_into_textbox(f"  {nickname}: (während Runde beigetreten)\n", "#808080")
+            elif correct is None:
+                self.insert_into_textbox(f"  {nickname}: Keine Antwort\n", "#808080")
+            elif correct:
+                self.insert_into_textbox(f"  ✓ {nickname}: {answered} [+{points_earned} Punkt] (Gesamt: {total_points})\n", "#00FF00")
+            else:
+                self.insert_into_textbox(f"  ✗ {nickname}: {answered} (Gesamt: {total_points})\n", "#FF0000")
+        
+        self.insert_into_textbox(f"\n⏳ Nächste Runde in 5 Sekunden...\n\n")
+        
+        # Update eigene Punkte
+        for result in results:
+            if result['nickname'] == self.controller.my_user['nickname']:
+                self.controller.my_user['points'] = result['total_points']
+                self.my_user_label.configure(
+                    text=f"Spieler: {self.controller.my_user['nickname']}\nPunkte: {result['total_points']}"
+                )
+                break
+    
+    def on_player_joined(self, data):
+        """Neuer Spieler ist beigetreten"""
+        nickname = data.get('nickname', 'Jemand')
+        self.insert_into_textbox(f"👋 {nickname} ist beigetreten\n", "#FFFF00")
+    
+    def on_player_left(self, data):
+        """Spieler hat verlassen"""
+        nickname = data.get('nickname', 'Jemand')
+        self.insert_into_textbox(f"👋 {nickname} hat die Lobby verlassen\n", "#FFA500")
+    
+    def on_player_list_update(self, data):
+        """Spielerliste wurde aktualisiert"""
+        players = data.get('players', [])
+        
+        # Update Current Players Liste
+        self.current_lobby_players.delete(0, "end")
+        self.current_lobby_players.insert(0, "👥 Aktuelle Spieler:")
+        
+        for i, player in enumerate(players, 1):
+            nickname = player['nickname']
+            points = player['points']
+            answered = player.get('answered', False)
+            can_answer = player.get('can_answer', True)
+            
+            status = "✓" if answered else "⏳"
+            if not can_answer:
+                status = "⊘"  # Kann nicht antworten
+            
+            self.current_lobby_players.insert("end", f"{status} {nickname} ({points})")
+    
+    def on_answer_accepted(self, data):
+        """Eigene Antwort wurde akzeptiert"""
+        self.has_answered = True
+        self.antwort_button.configure(state="disabled")
+        
+        if self.current_quelle:
+            self.source_button.configure(state="normal")
+        
+        partei = data.get('partei', '')
+        self.insert_into_textbox(f"✅ Deine Antwort wurde registriert: {partei}\n", "#00FF00")
+    
+    def on_leaderboard_update(self, data):
+        """Leaderboard wurde aktualisiert"""
+        leaderboard = data.get('leaderboard', [])
+        
+        self.leaderboard.delete(0, "end")
+        self.leaderboard.insert(0, "🏆 Top-Spieler")
+        
+        for entry in leaderboard:
+            rank = entry['rank']
+            nickname = entry['nickname']
+            points = entry['points']
+            
+            medal = ""
+            if rank == 1:
+                medal = "🥇"
+            elif rank == 2:
+                medal = "🥈"
+            elif rank == 3:
+                medal = "🥉"
+            else:
+                medal = f"{rank}."
+            
+            self.leaderboard.insert("end", f"{medal} {nickname}: {points}")
+    
+    def on_error(self, data):
+        """Fehler vom Server"""
+        message = data.get('message', 'Unbekannter Fehler')
+        self.insert_into_textbox(f"❌ Fehler: {message}\n", "#FF0000")
+    
+    # ==================== UI ACTIONS ====================
+    
+    def send_answer(self):
+        """Sendet die gewählte Antwort"""
+        if self.has_answered:
+            show_warning_box("Hinweis", "Du hast bereits geantwortet!")
+            return
+        
+        if not hasattr(self, 'partei_auswahl_dropdown'):
+            return
+        
+        selected_partei = self.partei_auswahl_dropdown.get()
+        
+        if not selected_partei:
+            show_warning_box("Fehler", "Bitte wähle eine Partei aus!")
+            return
+        
+        self.GameClient.submit_answer(selected_partei)
+    
+    def show_source(self):
+        """Zeigt die Quelle an"""
+        if self.current_quelle:
+            if self.current_quelle.startswith('http'):
+                # Öffne URL im Browser
+                webbrowser.open(self.current_quelle)
+            else:
+                # Zeige Text-Quelle
+                show_info_box("Quelle", self.current_quelle if self.current_quelle else "Keine Quelle verfügbar")
+        else:
+            show_warning_box("Quelle", "Keine Quelle verfügbar für diesen Wahlspruch.")
 
 
 
