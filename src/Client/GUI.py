@@ -6,6 +6,7 @@ from PopupViews import *
 import logging
 import os
 import signal
+from CTkListbox import CTkListbox
 
 def closing_protocol():
     """Closes WahlplakatGame and executes some last saving lines of Code."""
@@ -392,13 +393,40 @@ class GamePage(ctk.CTkFrame):
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
-        self.grid_columnconfigure(2, weight=1)
+        self.grid_columnconfigure(2, weight=0)
         
-
-
-
     def insert_into_textbox(self, text: str, color: str = None):
+        """
+        Fügt Text in die Textbox ein und scrollt zum Ende.
+        
+        :param text: Der einzufügende Text
+        :type text: str
+        :param color: Optionale Textfarbe (z.B. 'red', '#FF0000')
+        :type color: str or None
+        :return: None
+        :rtype: None
+        
+        :Example:
+        
+        >>> self.insert_into_textbox("Hallo Welt!")
+        >>> self.insert_into_textbox("Fehler aufgetreten", color="red")
+        >>> self.insert_into_textbox("Erfolg!", color="#00FF00")
+        """
         self.main_game_box.configure(state="normal")
+        
+        if color:
+            # Erstelle einen eindeutigen Tag-Namen für diese Farbe
+            tag_name = f"color_{color.replace('#', '')}"
+            
+            # Konfiguriere den Tag mit der gewünschten Farbe
+            self.main_game_box.tag_configure(tag_name, foreground=color)
+            
+            # Füge den Text mit dem Tag ein
+            self.main_game_box.insert("end", text, tag_name)
+        else:
+            # Füge den Text ohne Farbe ein
+            self.main_game_box.insert("end", text)
+        
         self.main_game_box.see("end")  # Scrollt zum Ende
         self.main_game_box.configure(state="disabled")
         
@@ -420,7 +448,7 @@ class GamePage(ctk.CTkFrame):
             self,
             state="disabled"
         )
-        self.main_game_box.grid(row=0, column=0, rowspan=1, columnspan=1, sticky="nsew")
+        self.main_game_box.grid(row=0, column=0, rowspan=3, columnspan=2, sticky="nsew")
 
         self.my_user_label = ctk.CTkLabel(
             self,
@@ -428,6 +456,43 @@ class GamePage(ctk.CTkFrame):
             font=ctk.CTkFont(size=16)
         )
         self.my_user_label.grid(row=0, column=2, sticky="new", pady=10, padx=10)
+
+        self.current_lobby_players = CTkListbox(
+            self
+        )
+        self.current_lobby_players.grid(row=1, column=2, sticky="nsew", pady=10, padx=10)
+
+        self.leaderboard = CTkListbox(
+            self
+        )
+        self.leaderboard.grid(row=2, column=2, sticky="nsew", pady=10, padx=10)
+
+        self.partei_auswahl_dropdown = ctk.CTkOptionMenu(
+            self
+        )
+        self.partei_auswahl_dropdown.grid(row=3, column=0, sticky="nsew", pady=10, padx=10)
+
+        self.antwort_button = ctk.CTkButton(
+            self,
+            text="Antwort senden",
+            command=None
+        )
+        self.antwort_button.grid(row=3, column=1, sticky="nsew", pady=10, padx=10)
+
+        self.source_button = ctk.CTkButton(
+            self,
+            text="Quelle vom Wahlspruch öffnen",
+            command=None
+        )
+        self.source_button.grid(row=3, column=1, sticky="nsew", pady=10, padx=10)
+
+        self.leave_button = ctk.CTkButton(
+            self,
+            text="Spiel schließen",
+            command=None,
+            fg_color="red"
+        )
+        self.leave_button.grid(row=3, column=2, sticky="nsew", pady=10, padx=10)
 
 
 
