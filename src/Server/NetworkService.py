@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from DatabaseService import DatabaseService
 import sillyorm
+import logging
 
 
 class RequestHandler(SimpleXMLRPCRequestHandler):
@@ -453,16 +454,16 @@ class NetworkService:
             self.server.serve_forever()
             
         except KeyboardInterrupt:
-            print("\n⚠️  Server wird heruntergefahren...")
+            logging.warning("\n⚠️  Server wird heruntergefahren...")
             self.stop()
         except Exception as e:
-            print(f"❌ Fehler beim Starten des Servers: {e}")
+            logging.exception(f"❌ Fehler beim Starten des Servers: {e}")
     
     def stop(self):
         """Stoppt den RPC Server"""
         if self.server:
             self.server.shutdown()
-            print("✅ Server erfolgreich beendet.")
+            logging.info("✅ Server erfolgreich beendet.")
 
 
 if __name__ == "__main__":

@@ -793,6 +793,7 @@ class MainGUI(ctk.CTk):
         self.title("WahlplakatGame")
         self.geometry("800x700")
         self.minsize(600, 500)  # Mindestgröße setzen
+        self.iconbitmap(RF.get_resource('icon.ico'))
         
         # Grid-Konfiguration für das Hauptfenster
         self.grid_rowconfigure(0, weight=1)

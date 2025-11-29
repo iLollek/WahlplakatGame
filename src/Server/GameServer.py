@@ -5,6 +5,7 @@ import threading
 from typing import Dict, List, Optional
 from DatabaseService import DatabaseService
 import secrets
+import logging
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = secrets.token_hex(16)
@@ -234,7 +235,7 @@ class GameService:
     
     def start(self):
         """Startet den GameService Server"""
-        print(f"🎮 GameService läuft auf {self.host}:{self.port}")
+        logging.info(f"🎮 GameService läuft auf {self.host}:{self.port}")
         socketio.run(app, host=self.host, port=self.port, debug=False, allow_unsafe_werkzeug=True)
 
 
@@ -253,14 +254,14 @@ def init_game_service(db_env):
 @socketio.on('connect')
 def handle_connect():
     """Client verbindet sich"""
-    print(f"🔌 Client verbunden: {request.sid}")
+    logging.info(f"🔌 Client verbunden: {request.sid}")
     emit('connected', {'message': 'Verbindung erfolgreich'})
 
 
 @socketio.on('disconnect')
 def handle_disconnect():
     """Client trennt Verbindung - automatische Erkennung"""
-    print(f"🔌 Client getrennt: {request.sid}")
+    logging.info(f"🔌 Client getrennt: {request.sid}")
     
     if not game_service:
         return
@@ -281,7 +282,7 @@ def handle_disconnect():
         player_list = game_service.lobby.get_player_list()
         emit('player_list_update', {'players': player_list}, broadcast=True)
         
-        print(f"👋 {nickname} wurde automatisch aus der Lobby entfernt (Disconnect)")
+        logging.info(f"👋 {nickname} wurde automatisch aus der Lobby entfernt (Disconnect)")
 
 
 @socketio.on('join_game')
@@ -342,10 +343,10 @@ def handle_join_game(data):
             if round_data:
                 socketio.emit('new_round', round_data)
         
-        print(f"✅ {user.nickname} ist der Lobby beigetreten")
+        logging.info(f"✅ {user.nickname} ist der Lobby beigetreten")
         
     except Exception as e:
-        print(f"❌ Fehler bei join_game: {e}")
+        logging.exception(f"❌ Fehler bei join_game: {e}")
         emit('error', {'message': str(e)})
 
 
@@ -378,12 +379,12 @@ def handle_leave_game(data):
             emit('player_list_update', {'players': player_list}, broadcast=True)
             
             if reason == 'crash':
-                print(f"👋 {nickname} hat die Lobby verlassen (Crash)")
+                logging.warning(f"👋 {nickname} hat die Lobby verlassen (Crash)")
             else:
-                print(f"👋 {nickname} hat die Lobby verlassen (auf Anfrage)")
+                logging.info(f"👋 {nickname} hat die Lobby verlassen (auf Anfrage)")
         
     except Exception as e:
-        print(f"❌ Fehler bei leave_game: {e}")
+        logging.exception(f"❌ Fehler bei leave_game: {e}")
 
 
 @socketio.on('submit_answer')
@@ -415,12 +416,12 @@ def handle_submit_answer(data):
             player_list = game_service.lobby.get_player_list()
             emit('player_list_update', {'players': player_list}, broadcast=True)
             
-            print(f"✓ {player['nickname']} hat geantwortet: {partei}")
+            logging.info(f"✓ {player['nickname']} hat geantwortet: {partei}")
         else:
             emit('error', {'message': message})
         
     except Exception as e:
-        print(f"❌ Fehler bei submit_answer: {e}")
+        logging.exception(f"❌ Fehler bei submit_answer: {e}")
         emit('error', {'message': str(e)})
 
 
@@ -442,7 +443,7 @@ def handle_request_quelle(data):
             emit('error', {'message': 'Quelle nicht verfügbar - hast du geantwortet?'})
         
     except Exception as e:
-        print(f"❌ Fehler bei request_quelle: {e}")
+        logging.exception(f"❌ Fehler bei request_quelle: {e}")
         emit('error', {'message': str(e)})
 
 
@@ -467,7 +468,7 @@ def handle_request_leaderboard():
         emit('leaderboard_update', {'leaderboard': leaderboard})
         
     except Exception as e:
-        print(f"❌ Fehler bei request_leaderboard: {e}")
+        logging.exception(f"❌ Fehler bei request_leaderboard: {e}")
         emit('error', {'message': str(e)})
 
 
