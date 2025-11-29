@@ -12,6 +12,7 @@ from GameClient import GameClient
 import random
 import pygame
 from ResourceFetcher import ResourceFetcher
+import logging
 
 
 
